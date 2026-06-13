@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Question } from '@/lib/questions-seed';
 import { Patient, Assessment, Response } from '@/lib/db-server';
-import { FileDown, ArrowLeft } from 'lucide-react';
+import { FileDown, ArrowLeft, ClipboardCheck, ArrowRight, User, Calendar, MapPin, Phone } from 'lucide-react';
 import Link from 'next/link';
 
 interface PdfReportProps {
@@ -14,7 +14,6 @@ interface PdfReportProps {
 }
 
 export default function PdfReport({ patient, assessment, questions, responses }: PdfReportProps) {
-  const [filterType, setFilterType] = useState<'ALL' | 'YES' | 'NO' | 'NOT_TESTED'>('ALL');
   const [downloading, setDownloading] = useState(false);
 
   // Map responses for easy lookup
@@ -23,18 +22,10 @@ export default function PdfReport({ patient, assessment, questions, responses }:
     responseMap.set(r.questionId, r.answer);
   });
 
-  // Calculate statistics only for screen filters, not for report display
   const totalQuestions = questions.length;
   const yesCount = responses.filter(r => r.answer === 'YES').length;
   const noCount = responses.filter(r => r.answer === 'NO').length;
   const notTestedCount = responses.filter(r => r.answer === 'NOT_TESTED').length;
-
-  // Filtered rows for the screen-only table
-  const filteredQuestions = questions.filter(q => {
-    const ans = responseMap.get(q.questionId) || 'NOT_TESTED';
-    if (filterType === 'ALL') return true;
-    return ans === filterType;
-  });
 
   const handleDownloadPdf = async () => {
     setDownloading(true);
@@ -67,7 +58,6 @@ export default function PdfReport({ patient, assessment, questions, responses }:
       pdf.addImage(imgData1, 'PNG', 0, 0, pdfWidth, imgHeight1);
 
       // Generate page 2 canvas (which includes the entire full table)
-      // Since it can be very long, we temporarily unhide it from display constraints
       const canvas2 = await html2canvas(page2Element, {
         scale: 2,
         useCORS: true,
@@ -102,69 +92,96 @@ export default function PdfReport({ patient, assessment, questions, responses }:
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto p-4">
-      {/* Control Panel (no-print) */}
-      <div className="bg-white p-4 rounded-lg border border-border flex flex-col md:flex-row md:items-center justify-between gap-4 no-print shadow-sm">
-        <div className="flex items-center space-x-3">
-          <Link
-            href="/"
-            className="p-2 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
+    <div className="max-w-2xl mx-auto p-4 space-y-6">
+      {/* On-Screen Responsive Portal UI */}
+      <div className="bg-white rounded-lg border border-border shadow-sm p-6 space-y-6">
+        
+        {/* Success Header */}
+        <div className="flex flex-col items-center text-center space-y-3 pb-6 border-b border-border">
+          <div className="p-3 bg-emerald-50 rounded-full text-success">
+            <ClipboardCheck className="h-10 w-10" />
+          </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-800">Assessment Report</h1>
-            <p className="text-xs text-slate-500 font-semibold">Patient: {patient.name} ({patient.patientId})</p>
+            <h1 className="text-2xl font-extrabold text-slate-800 tracking-tight">Assessment Session Complete</h1>
+            <p className="text-sm text-slate-500 font-semibold mt-1">
+              All responses have been successfully compiled and saved to the patient log.
+            </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Table filter options */}
-          <div className="flex rounded border border-border overflow-hidden text-xs font-semibold">
-            <button
-              onClick={() => setFilterType('ALL')}
-              className={`px-3 py-2 ${filterType === 'ALL' ? 'bg-secondary text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
-            >
-              All ({totalQuestions})
-            </button>
-            <button
-              onClick={() => setFilterType('YES')}
-              className={`px-3 py-2 border-l border-border ${filterType === 'YES' ? 'bg-success text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
-            >
-              YES ({yesCount})
-            </button>
-            <button
-              onClick={() => setFilterType('NO')}
-              className={`px-3 py-2 border-l border-border ${filterType === 'NO' ? 'bg-danger text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
-            >
-              NO ({noCount})
-            </button>
-            <button
-              onClick={() => setFilterType('NOT_TESTED')}
-              className={`px-3 py-2 border-l border-border ${filterType === 'NOT_TESTED' ? 'bg-slate-700 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
-            >
-              Not Tested ({notTestedCount})
-            </button>
+        {/* Patient & Assessment Details Grid */}
+        <div className="space-y-4">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            Session Summary
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-lg border border-border text-sm">
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <User className="h-4 w-4 text-slate-400" />
+                <span className="font-semibold text-slate-700">Patient Name:</span>
+                <span className="font-bold text-slate-900">{patient.name}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <ClipboardCheck className="h-4 w-4 text-slate-400" />
+                <span className="font-semibold text-slate-700">Patient ID:</span>
+                <span className="font-bold text-slate-900">{patient.patientId}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <MapPin className="h-4 w-4 text-slate-400" />
+                <span className="font-semibold text-slate-700">Residence:</span>
+                <span className="font-semibold text-slate-800">{patient.place || 'N/A'}</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <Calendar className="h-4 w-4 text-slate-400" />
+                <span className="font-semibold text-slate-700">Evaluation Date:</span>
+                <span className="font-semibold text-slate-800">{assessment.assessmentDate}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <User className="h-4 w-4 text-slate-400" />
+                <span className="font-semibold text-slate-700">Therapist:</span>
+                <span className="font-semibold text-slate-800">{assessment.therapistName || 'N/A'}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Phone className="h-4 w-4 text-slate-400" />
+                <span className="font-semibold text-slate-700">Parent Phone:</span>
+                <span className="font-semibold text-slate-800">{patient.phone || 'N/A'}</span>
+              </div>
+            </div>
           </div>
+        </div>
 
+        {/* Action Button Row */}
+        <div className="flex flex-col sm:flex-row gap-3 pt-2">
           <button
             onClick={handleDownloadPdf}
             disabled={downloading}
-            className="flex items-center space-x-1.5 px-4 py-2 bg-primary text-white rounded font-bold text-xs hover:bg-blue-600 transition disabled:opacity-50"
+            className="flex-1 flex items-center justify-center space-x-2 py-3 px-4 bg-primary hover:bg-blue-600 text-white font-bold rounded-lg transition disabled:opacity-50 text-base"
           >
-            <FileDown className="h-4 w-4" />
-            <span>{downloading ? 'Downloading...' : 'Download PDF'}</span>
+            <FileDown className="h-5 w-5" />
+            <span>{downloading ? 'Compiling PDF Report...' : 'Download Clinical PDF Report'}</span>
           </button>
+          
+          <Link
+            href="/"
+            className="flex-1 flex items-center justify-center space-x-2 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg transition text-base"
+          >
+            <span>Return to Dashboard</span>
+            <ArrowRight className="h-5 w-5" />
+          </Link>
         </div>
       </div>
 
-      {/* A4 Page Layout Container */}
-      <div 
-        id="a4-report" 
-        className="bg-white border border-slate-300 p-8 md:p-12 shadow-md max-w-[210mm] mx-auto text-black font-sans leading-normal relative"
-      >
+      {/* Off-screen A4 container for PDF rendering (hidden from UI, laid out by browser for html2canvas) */}
+      <div style={{ position: 'absolute', left: '-9999px', top: '-9999px', width: '210mm' }}>
+        
         {/* Page 1: Demographics Cover Page */}
-        <div id="report-page-1" className="bg-white pb-6">
+        <div 
+          id="report-page-1" 
+          className="bg-white text-black p-16 font-sans"
+          style={{ width: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
+        >
           {/* PDF Header Section */}
           <div className="border-b-2 border-slate-800 pb-4 mb-6 flex justify-between items-end">
             <div>
@@ -250,54 +267,17 @@ export default function PdfReport({ patient, assessment, questions, responses }:
           )}
         </div>
 
-        {/* Page break before table in print view */}
-        <div className="hidden print:block print-page-break mb-6"></div>
-
         {/* Page 2: Question Report Section */}
-        <div id="report-page-2" className="bg-white pt-4">
+        <div 
+          id="report-page-2" 
+          className="bg-white text-black p-16 font-sans"
+          style={{ width: '210mm', boxSizing: 'border-box' }}
+        >
           <h3 className="font-bold text-slate-800 uppercase text-xs tracking-wider mb-3">
             Question Response Breakdowns
           </h3>
           
-          {/* 1. Screen Only Table (Filterable by YES/NO/NOT_TESTED) */}
-          <table className="w-full text-left border-collapse text-xs border border-slate-200 print:hidden">
-            <thead>
-              <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
-                <th className="p-2 border-r border-slate-200 w-16">ID</th>
-                <th className="p-2 border-r border-slate-200 w-32">Domain</th>
-                <th className="p-2 border-r border-slate-200 w-16">Age Level</th>
-                <th className="p-2 border-r border-slate-200">Curriculum Sequence Text</th>
-                <th className="p-2 w-20 text-center">Response</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredQuestions.length > 0 ? (
-                filteredQuestions.map((q) => {
-                  const ans = responseMap.get(q.questionId) || 'NOT_TESTED';
-                  return (
-                    <tr key={q.questionId} className="border-b border-slate-200 hover:bg-slate-50">
-                      <td className="p-2 font-bold text-slate-900 border-r border-slate-200">{q.questionId}</td>
-                      <td className="p-2 text-slate-600 border-r border-slate-200 font-medium">{q.domain}</td>
-                      <td className="p-2 text-slate-600 border-r border-slate-200 text-center font-medium">{q.ageLevel} yrs</td>
-                      <td className="p-2 text-slate-800 border-r border-slate-200">{q.question}</td>
-                      <td className="p-2 font-bold text-center text-slate-800">
-                        {ans}
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={5} className="p-4 text-center text-slate-500 font-semibold">
-                    No sequences found matching the filter selection.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          {/* 2. Print Only Table (Always displays ALL 372 questions for the physical PDF) */}
-          <table className="w-full text-left border-collapse text-xs border border-slate-200 hidden print:table">
+          <table className="w-full text-left border-collapse text-xs border border-slate-200">
             <thead>
               <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
                 <th className="p-2 border-r border-slate-200 w-16">ID</th>
@@ -311,7 +291,7 @@ export default function PdfReport({ patient, assessment, questions, responses }:
               {questions.map((q) => {
                 const ans = responseMap.get(q.questionId) || 'NOT_TESTED';
                 return (
-                  <tr key={q.questionId} className="border-b border-slate-200 hover:bg-slate-50">
+                  <tr key={q.questionId} className="border-b border-slate-200">
                     <td className="p-2 font-bold text-slate-900 border-r border-slate-200">{q.questionId}</td>
                     <td className="p-2 text-slate-600 border-r border-slate-200 font-medium">{q.domain}</td>
                     <td className="p-2 text-slate-600 border-r border-slate-200 text-center font-medium">{q.ageLevel} yrs</td>
