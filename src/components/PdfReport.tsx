@@ -27,6 +27,13 @@ export default function PdfReport({ patient, assessment, questions, responses }:
   const noCount = responses.filter(r => r.answer === 'NO').length;
   const notTestedCount = responses.filter(r => r.answer === 'NOT_TESTED').length;
 
+  // Chunk questions into groups of 15 to prevent row splitting across A4 pages
+  const chunkSize = 15;
+  const questionChunks: Question[][] = [];
+  for (let i = 0; i < questions.length; i += chunkSize) {
+    questionChunks.push(questions.slice(i, i + chunkSize));
+  }
+
   const handleDownloadPdf = async () => {
     setDownloading(true);
     try {
@@ -34,51 +41,39 @@ export default function PdfReport({ patient, assessment, questions, responses }:
       const { jsPDF } = await import('jspdf');
 
       const page1Element = document.getElementById('report-page-1');
-      const page2Element = document.getElementById('report-page-2');
-
-      if (!page1Element || !page2Element) {
-        throw new Error('Report sections not found in DOM.');
+      if (!page1Element) {
+        throw new Error('Report cover page not found in DOM.');
       }
 
-      // Generate page 1 canvas
+      // Initialize A4 PDF (210mm x 297mm)
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = 210;
+
+      // 1. Render Cover Page (Page 1)
       const canvas1 = await html2canvas(page1Element, {
         scale: 2,
         useCORS: true,
         logging: false,
       });
       const imgData1 = canvas1.toDataURL('image/png');
-
-      // Initialize A4 PDF
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = 210;
-      const pdfHeight = 297;
-
-      // Draw Page 1
       const imgHeight1 = (canvas1.height * pdfWidth) / canvas1.width;
       pdf.addImage(imgData1, 'PNG', 0, 0, pdfWidth, imgHeight1);
 
-      // Generate page 2 canvas (which includes the entire full table)
-      const canvas2 = await html2canvas(page2Element, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-      });
-      const imgData2 = canvas2.toDataURL('image/png');
-
-      // Draw Page 2 and slice across subsequent pages
-      const imgHeight2 = (canvas2.height * pdfWidth) / canvas2.width;
-      let heightLeft = imgHeight2;
-      let position = 0;
-
-      pdf.addPage();
-      pdf.addImage(imgData2, 'PNG', 0, position, pdfWidth, imgHeight2);
-      heightLeft -= pdfHeight;
-
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight2;
-        pdf.addPage();
-        pdf.addImage(imgData2, 'PNG', 0, position, pdfWidth, imgHeight2);
-        heightLeft -= pdfHeight;
+      // 2. Render Table Chunk Pages (Page 2 onwards)
+      for (let idx = 0; idx < questionChunks.length; idx++) {
+        const tablePageElement = document.getElementById(`report-page-table-${idx}`);
+        if (tablePageElement) {
+          const canvasTable = await html2canvas(tablePageElement, {
+            scale: 2,
+            useCORS: true,
+            logging: false,
+          });
+          const imgDataTable = canvasTable.toDataURL('image/png');
+          const imgHeightTable = (canvasTable.height * pdfWidth) / canvasTable.width;
+          
+          pdf.addPage();
+          pdf.addImage(imgDataTable, 'PNG', 0, 0, pdfWidth, imgHeightTable);
+        }
       }
 
       // Save PDF
@@ -179,7 +174,7 @@ export default function PdfReport({ patient, assessment, questions, responses }:
         {/* Page 1: Demographics Cover Page */}
         <div 
           id="report-page-1" 
-          className="bg-white text-black p-16 font-sans"
+          className="bg-white text-black p-12 font-sans"
           style={{ width: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
         >
           {/* PDF Header Section */}
@@ -267,50 +262,52 @@ export default function PdfReport({ patient, assessment, questions, responses }:
           )}
         </div>
 
-        {/* Page 2: Question Report Section */}
-        <div 
-          id="report-page-2" 
-          className="bg-white text-black p-16 font-sans"
-          style={{ width: '210mm', boxSizing: 'border-box' }}
-        >
-          <h3 className="font-bold text-slate-800 uppercase text-xs tracking-wider mb-3">
-            Question Response Breakdowns
-          </h3>
-          
-          <table className="w-full text-left border-collapse text-xs border border-slate-200">
-            <thead>
-              <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
-                <th className="p-2 border-r border-slate-200 w-16">ID</th>
-                <th className="p-2 border-r border-slate-200 w-32">Domain</th>
-                <th className="p-2 border-r border-slate-200 w-16">Age Level</th>
-                <th className="p-2 border-r border-slate-200">Curriculum Sequence Text</th>
-                <th className="p-2 w-20 text-center">Response</th>
-              </tr>
-            </thead>
-            <tbody>
-              {questions.map((q) => {
-                const ans = responseMap.get(q.questionId) || 'NOT_TESTED';
-                return (
-                  <tr key={q.questionId} className="border-b border-slate-200">
-                    <td className="p-2 font-bold text-slate-900 border-r border-slate-200">{q.questionId}</td>
-                    <td className="p-2 text-slate-600 border-r border-slate-200 font-medium">{q.domain}</td>
-                    <td className="p-2 text-slate-600 border-r border-slate-200 text-center font-medium">{q.ageLevel} yrs</td>
-                    <td className="p-2 text-slate-800 border-r border-slate-200">{q.question}</td>
-                    <td className="p-2 font-bold text-center text-slate-800">
-                      {ans}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        {/* Page 2 onwards: Question Report Section (divided into chunks of 15 to prevent row cutting) */}
+        {questionChunks.map((chunk, chunkIdx) => (
+          <div 
+            key={chunkIdx}
+            id={`report-page-table-${chunkIdx}`} 
+            className="bg-white text-black p-12 font-sans"
+            style={{ width: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
+          >
+            <h3 className="font-bold text-slate-800 uppercase text-xs tracking-wider mb-3">
+              Question Response Breakdowns (Page {chunkIdx + 1} of {questionChunks.length})
+            </h3>
+            
+            <table className="w-full text-left border-collapse text-xs border border-slate-200">
+              <thead>
+                <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
+                  <th className="py-1.5 px-2 border-r border-slate-200 w-16">ID</th>
+                  <th className="py-1.5 px-2 border-r border-slate-200 w-32">Domain</th>
+                  <th className="py-1.5 px-2 border-r border-slate-200 w-16">Age Level</th>
+                  <th className="py-1.5 px-2 border-r border-slate-200">Curriculum Sequence Text</th>
+                  <th className="py-1.5 px-2 w-20 text-center">Response</th>
+                </tr>
+              </thead>
+              <tbody>
+                {chunk.map((q) => {
+                  const ans = responseMap.get(q.questionId) || 'NOT_TESTED';
+                  return (
+                    <tr key={q.questionId} className="border-b border-slate-200">
+                      <td className="py-1.5 px-2 font-bold text-slate-900 border-r border-slate-200">{q.questionId}</td>
+                      <td className="py-1.5 px-2 text-slate-600 border-r border-slate-200 font-medium">{q.domain}</td>
+                      <td className="py-1.5 px-2 text-slate-600 border-r border-slate-200 text-center font-medium">{q.ageLevel} yrs</td>
+                      <td className="py-1.5 px-2 text-slate-800 border-r border-slate-200">{q.question}</td>
+                      <td className="py-1.5 px-2 font-bold text-center text-slate-800">
+                        {ans}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
 
-          {/* Footer info */}
-          <div className="mt-12 pt-8 border-t border-slate-200 text-xs text-slate-400">
-            <p>Carolina Developmental Assessment System (CDAS)</p>
-            <p className="mt-1">Generated on {new Date().toLocaleString()}</p>
+            {/* Footer info */}
+            <div className="mt-8 pt-6 border-t border-slate-200 text-xs text-slate-400">
+              <p>Carolina Developmental Assessment System (CDAS) • Page {chunkIdx + 2}</p>
+            </div>
           </div>
-        </div>
+        ))}
       </div>
     </div>
   );
