@@ -25,18 +25,36 @@ export default function AssessmentFlow({ patient, assessment }: AssessmentFlowPr
 
   // Load questions and existing responses
   useEffect(() => {
+    // Load from cache first for instant layout
+    const cachedQuestions = dbClient.getCachedQuestions();
+    const cachedResponses = dbClient.getCachedResponses(assessment.assessmentId);
+    if (cachedQuestions.length > 0) {
+      setQuestions(cachedQuestions);
+      const uniqueDomains = Array.from(new Set(cachedQuestions.map(q => q.domain)));
+      setActiveDomain(uniqueDomains[0] || '');
+      
+      const responseMap: Record<string, 'YES' | 'NO' | 'NOT_TESTED'> = {};
+      cachedResponses.forEach(r => {
+        responseMap[r.questionId] = r.answer;
+      });
+      setResponses(responseMap);
+      setLoading(false);
+    }
+
     async function loadData() {
       try {
-        const loadedQuestions = await dbClient.getQuestions();
+        const [loadedQuestions, loadedResponses] = await Promise.all([
+          dbClient.getQuestions(),
+          dbClient.getResponses(assessment.assessmentId)
+        ]);
         setQuestions(loadedQuestions);
         
         if (loadedQuestions.length > 0) {
-          // Set first domain as active
+          // Set first domain as active if not already set
           const uniqueDomains = Array.from(new Set(loadedQuestions.map(q => q.domain)));
-          setActiveDomain(uniqueDomains[0] || '');
+          setActiveDomain(prev => prev || uniqueDomains[0] || '');
         }
 
-        const loadedResponses = await dbClient.getResponses(assessment.assessmentId);
         const responseMap: Record<string, 'YES' | 'NO' | 'NOT_TESTED'> = {};
         loadedResponses.forEach(r => {
           responseMap[r.questionId] = r.answer;

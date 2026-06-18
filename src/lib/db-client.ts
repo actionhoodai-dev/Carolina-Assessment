@@ -22,6 +22,52 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T | nul
 }
 
 export const dbClient = {
+  // --- Cached Sync Accessors ---
+  getCachedPatients(): Patient[] {
+    if (typeof window === 'undefined') return [];
+    const cached = localStorage.getItem(STORAGE_KEYS.PATIENTS);
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch {}
+    }
+    return [];
+  },
+
+  getCachedAssessments(): Assessment[] {
+    if (typeof window === 'undefined') return [];
+    const cached = localStorage.getItem(STORAGE_KEYS.ASSESSMENTS);
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch {}
+    }
+    return [];
+  },
+
+  getCachedQuestions(): Question[] {
+    if (typeof window === 'undefined') return [];
+    const cached = localStorage.getItem(STORAGE_KEYS.QUESTIONS);
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch {}
+    }
+    return [];
+  },
+
+  getCachedResponses(assessmentId: string): Response[] {
+    if (typeof window === 'undefined') return [];
+    const cached = localStorage.getItem(STORAGE_KEYS.RESPONSES);
+    if (cached) {
+      try {
+        const list: Response[] = JSON.parse(cached);
+        return list.filter(r => r.assessmentId === assessmentId);
+      } catch {}
+    }
+    return [];
+  },
+
   // --- Questions ---
   async getQuestions(): Promise<Question[]> {
     if (typeof window === 'undefined') return [];
@@ -50,8 +96,25 @@ export const dbClient = {
     // Attempt to fetch fresh from server
     const serverPatients = await fetchJson<Patient[]>('/api/patients');
     if (serverPatients) {
-      localStorage.setItem(STORAGE_KEYS.PATIENTS, JSON.stringify(serverPatients));
-      return serverPatients;
+      // Merge with queued patients to avoid losing unsynced local data
+      const queueKey = 'cdas_sync_queue';
+      const queue = JSON.parse(localStorage.getItem(queueKey) || '[]');
+      const queuedPatients = queue
+        .filter((item: any) => item.type === 'PATIENT')
+        .map((item: any) => item.data as Patient);
+
+      const mergedPatients = [...serverPatients];
+      for (const qp of queuedPatients) {
+        const idx = mergedPatients.findIndex(p => p.patientId === qp.patientId);
+        if (idx >= 0) {
+          mergedPatients[idx] = qp;
+        } else {
+          mergedPatients.push(qp);
+        }
+      }
+
+      localStorage.setItem(STORAGE_KEYS.PATIENTS, JSON.stringify(mergedPatients));
+      return mergedPatients;
     }
 
     // Offline fallback
@@ -122,6 +185,13 @@ export const dbClient = {
 
     const serverAssessments = await fetchJson<Assessment[]>(url);
     if (serverAssessments) {
+      // Merge with queued assessments to avoid losing unsynced local data
+      const queueKey = 'cdas_sync_queue';
+      const queue = JSON.parse(localStorage.getItem(queueKey) || '[]');
+      const queuedAssessments = queue
+        .filter((item: any) => item.type === 'ASSESSMENT')
+        .map((item: any) => item.data as Assessment);
+
       // Cache them locally
       const cached = localStorage.getItem(STORAGE_KEYS.ASSESSMENTS);
       let localList: Assessment[] = cached ? JSON.parse(cached) : [];
@@ -133,9 +203,19 @@ export const dbClient = {
       } else {
         localList = serverAssessments;
       }
+
+      // Merge queued assessments back in
+      for (const qa of queuedAssessments) {
+        const idx = localList.findIndex(a => a.assessmentId === qa.assessmentId);
+        if (idx >= 0) {
+          localList[idx] = qa;
+        } else {
+          localList.push(qa);
+        }
+      }
       
       localStorage.setItem(STORAGE_KEYS.ASSESSMENTS, JSON.stringify(localList));
-      return serverAssessments;
+      return patientId ? localList.filter(a => a.patientId === patientId) : localList;
     }
 
     // Offline fallback
@@ -187,13 +267,31 @@ export const dbClient = {
     const url = `/api/assessments/responses?assessmentId=${assessmentId}`;
     const serverResponses = await fetchJson<Response[]>(url);
     if (serverResponses) {
+      // Merge with queued responses
+      const queueKey = 'cdas_sync_queue';
+      const queue = JSON.parse(localStorage.getItem(queueKey) || '[]');
+      const queuedResponses = queue
+        .filter((item: any) => item.type === 'RESPONSE' && item.data.assessmentId === assessmentId)
+        .map((item: any) => item.data as Response);
+
       // Cache them locally
       const cached = localStorage.getItem(STORAGE_KEYS.RESPONSES);
       let localResponses: Response[] = cached ? JSON.parse(cached) : [];
       localResponses = localResponses.filter(r => r.assessmentId !== assessmentId);
       localResponses.push(...serverResponses);
+
+      // Merge queued responses back in
+      for (const qr of queuedResponses) {
+        const idx = localResponses.findIndex(r => r.assessmentId === qr.assessmentId && r.questionId === qr.questionId);
+        if (idx >= 0) {
+          localResponses[idx] = qr;
+        } else {
+          localResponses.push(qr);
+        }
+      }
+
       localStorage.setItem(STORAGE_KEYS.RESPONSES, JSON.stringify(localResponses));
-      return serverResponses;
+      return localResponses.filter(r => r.assessmentId === assessmentId);
     }
 
     // Offline fallback

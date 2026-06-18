@@ -27,24 +27,35 @@ export default function NewPatient() {
 
   // Load next patient ID & current datetime
   useEffect(() => {
+    // Helper to calculate next number from patients list
+    function calculateNextId(patientsList: any[]) {
+      let nextNum = 100;
+      if (patientsList.length > 0) {
+        const ids = patientsList.map(p => {
+          const match = p.patientId.match(/^C(\d+)$/);
+          return match ? parseInt(match[1], 10) : 99;
+        });
+        const maxId = Math.max(...ids, 99);
+        nextNum = maxId + 1;
+      }
+      return `C${nextNum}`;
+    }
+
+    // Try loading next ID from cache first
+    const cachedPatients = dbClient.getCachedPatients();
+    if (cachedPatients.length > 0) {
+      setNextId(calculateNextId(cachedPatients));
+    }
+
     async function initForm() {
       try {
         const patients = await dbClient.getPatients();
-        let nextNum = 100;
-        if (patients.length > 0) {
-          const ids = patients.map(p => {
-            const match = p.patientId.match(/^C(\d+)$/);
-            return match ? parseInt(match[1], 10) : 99;
-          });
-          const maxId = Math.max(...ids, 99);
-          nextNum = maxId + 1;
-        }
-        setNextId(`C${nextNum}`);
-
-        // Prefill values are set dynamically on submit
+        setNextId(calculateNextId(patients));
       } catch (e) {
         console.error('Error preloading patient ID', e);
-        setNextId('C100');
+        if (cachedPatients.length === 0) {
+          setNextId('C100');
+        }
       }
     }
     initForm();

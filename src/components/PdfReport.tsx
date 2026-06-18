@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Question } from '@/lib/questions-seed';
 import { Patient, Assessment, Response } from '@/lib/db-server';
-import { FileDown, ArrowLeft, ClipboardCheck, ArrowRight, User, Calendar, MapPin, Phone } from 'lucide-react';
+import { FileDown, ClipboardCheck, ArrowRight, User, Calendar, MapPin, Phone } from 'lucide-react';
 import Link from 'next/link';
 
 interface PdfReportProps {
@@ -27,57 +27,291 @@ export default function PdfReport({ patient, assessment, questions, responses }:
   const noCount = responses.filter(r => r.answer === 'NO').length;
   const notTestedCount = responses.filter(r => r.answer === 'NOT_TESTED').length;
 
-  // Chunk questions into groups of 15 to prevent row splitting across A4 pages
-  const chunkSize = 15;
-  const questionChunks: Question[][] = [];
-  for (let i = 0; i < questions.length; i += chunkSize) {
-    questionChunks.push(questions.slice(i, i + chunkSize));
-  }
-
   const handleDownloadPdf = async () => {
     setDownloading(true);
     try {
-      const html2canvas = (await import('html2canvas')).default;
       const { jsPDF } = await import('jspdf');
 
-      const page1Element = document.getElementById('report-page-1');
-      if (!page1Element) {
-        throw new Error('Report cover page not found in DOM.');
-      }
-
       // Initialize A4 PDF (210mm x 297mm)
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = 210;
-
-      // 1. Render Cover Page (Page 1)
-      const canvas1 = await html2canvas(page1Element, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
+      const doc = new jsPDF({
+        orientation: 'p',
+        unit: 'mm',
+        format: 'a4',
+        compress: true
       });
-      const imgData1 = canvas1.toDataURL('image/png');
-      const imgHeight1 = (canvas1.height * pdfWidth) / canvas1.width;
-      pdf.addImage(imgData1, 'PNG', 0, 0, pdfWidth, imgHeight1);
 
-      // 2. Render Table Chunk Pages (Page 2 onwards)
-      for (let idx = 0; idx < questionChunks.length; idx++) {
-        const tablePageElement = document.getElementById(`report-page-table-${idx}`);
-        if (tablePageElement) {
-          const canvasTable = await html2canvas(tablePageElement, {
-            scale: 2,
-            useCORS: true,
-            logging: false,
-          });
-          const imgDataTable = canvasTable.toDataURL('image/png');
-          const imgHeightTable = (canvasTable.height * pdfWidth) / canvasTable.width;
-          
-          pdf.addPage();
-          pdf.addImage(imgDataTable, 'PNG', 0, 0, pdfWidth, imgHeightTable);
+      // --- PAGE 1: COVER PAGE ---
+      // Header
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(14);
+      doc.setTextColor(30, 41, 59); // slate-800
+      doc.text('CAROLINA DEVELOPMENTAL ASSESSMENT SYSTEM (CDAS)', 15, 22);
+
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139); // slate-505
+      doc.text('Clinical Assessment Report', 15, 27);
+
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(148, 163, 184); // slate-400
+      doc.text('Clinical Document\nConfidential', 195, 23, { align: 'right' });
+
+      // Thick horizontal line
+      doc.setDrawColor(30, 41, 59); // slate-800
+      doc.setLineWidth(0.6);
+      doc.line(15, 32, 195, 32);
+
+      // Info Columns Layout
+      // Column 1: Patient Info (x: 15 to 100)
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(30, 58, 138); // blue-900 / primary
+      doc.text('PATIENT INFORMATION', 15, 43);
+
+      doc.setDrawColor(226, 232, 240); // slate-200
+      doc.setLineWidth(0.3);
+      doc.line(15, 45, 100, 45);
+
+      const patientFields = [
+        { label: 'Name:', value: patient.name, bold: true },
+        { label: 'Patient ID:', value: patient.patientId, bold: true },
+        { label: 'Gender:', value: patient.gender },
+        { label: 'DOB:', value: patient.dob },
+        { label: 'Age:', value: patient.age },
+        { label: 'Residence:', value: patient.place || 'N/A' }
+      ];
+
+      let patientY = 51;
+      patientFields.forEach(f => {
+        doc.setFont('Helvetica', 'normal');
+        doc.setFontSize(9.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(f.label, 15, patientY);
+
+        doc.setFont('Helvetica', f.bold ? 'bold' : 'normal');
+        doc.setTextColor(30, 41, 59);
+        doc.text(f.value, 42, patientY);
+        patientY += 6.5;
+      });
+
+      // Column 2: Assessment Details (x: 110 to 195)
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(30, 58, 138);
+      doc.text('ASSESSMENT DETAILS', 110, 43);
+
+      doc.line(110, 45, 195, 45);
+
+      const assessmentFields = [
+        { label: 'Therapist:', value: assessment.therapistName || 'N/A', bold: true },
+        { label: 'Date:', value: assessment.assessmentDate },
+        { label: 'Parent Name:', value: patient.parentName || 'N/A' },
+        { label: 'Parent Phone:', value: patient.phone || 'N/A' }
+      ];
+
+      let assessmentY = 51;
+      assessmentFields.forEach(f => {
+        doc.setFont('Helvetica', 'normal');
+        doc.setFontSize(9.5);
+        doc.setTextColor(100, 116, 139);
+        doc.text(f.label, 110, assessmentY);
+
+        doc.setFont('Helvetica', f.bold ? 'bold' : 'normal');
+        doc.setTextColor(30, 41, 59);
+        doc.text(f.value, 142, assessmentY);
+        assessmentY += 6.5;
+      });
+
+      // Score Summary Section
+      const summaryY = Math.max(patientY, assessmentY) + 5;
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(30, 58, 138);
+      doc.text('EVALUATION SCORE SUMMARY', 15, summaryY);
+      doc.line(15, summaryY + 2, 195, summaryY + 2);
+
+      // Score cards background
+      const cardWidth = 42;
+      const cardHeight = 16;
+      const cardY = summaryY + 5;
+      const cardData = [
+        { title: 'TOTAL ITEMS', value: totalQuestions, bgColor: [241, 245, 249], textCol: [30, 41, 59] }, // slate-100
+        { title: 'YES (PASSED)', value: yesCount, bgColor: [240, 253, 250], textCol: [22, 163, 74] },   // emerald-50/600
+        { title: 'NO (FAILED)', value: noCount, bgColor: [254, 242, 242], textCol: [220, 38, 38] },    // red-50/600
+        { title: 'NOT TESTED', value: notTestedCount, bgColor: [248, 250, 252], textCol: [100, 116, 139] } // slate-50/500
+      ];
+
+      cardData.forEach((c, idx) => {
+        const cardX = 15 + idx * (cardWidth + 4);
+        
+        // Draw background card
+        doc.setFillColor(c.bgColor[0], c.bgColor[1], c.bgColor[2]);
+        doc.rect(cardX, cardY, cardWidth, cardHeight, 'F');
+        
+        // Card Border
+        doc.setDrawColor(226, 232, 240);
+        doc.rect(cardX, cardY, cardWidth, cardHeight, 'S');
+
+        // Draw Card Title
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(148, 163, 184); // slate-400
+        doc.text(c.title, cardX + cardWidth / 2, cardY + 5, { align: 'center' });
+
+        // Draw Card Value
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(13);
+        doc.setTextColor(c.textCol[0], c.textCol[1], c.textCol[2]);
+        doc.text(String(c.value), cardX + cardWidth / 2, cardY + 12, { align: 'center' });
+      });
+
+      // Therapist Notes Section
+      const notesY = cardY + cardHeight + 10;
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(30, 58, 138);
+      doc.text('THERAPIST NOTES & CLINICAL OBSERVATIONS', 15, notesY);
+      doc.line(15, notesY + 2, 195, notesY + 2);
+
+      const notesText = assessment.notes || 'No notes or specific clinical observations recorded for this assessment session.';
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(30, 41, 59);
+
+      // Split text to fit page width (180mm minus padding = 172mm)
+      const splitNotes = doc.splitTextToSize(notesText, 172);
+      const notesBoxHeight = splitNotes.length * 5.2 + 8;
+
+      // Draw background box for notes
+      doc.setFillColor(248, 250, 252); // slate-50
+      doc.rect(15, notesY + 5, 180, notesBoxHeight, 'F');
+      doc.setDrawColor(226, 232, 240); // slate-200
+      doc.rect(15, notesY + 5, 180, notesBoxHeight, 'S');
+
+      // Draw Notes text lines
+      let noteLineY = notesY + 11;
+      doc.setFont('Helvetica', assessment.notes ? 'normal' : 'italic');
+      splitNotes.forEach((line: string) => {
+        doc.text(line, 19, noteLineY);
+        noteLineY += 5.2;
+      });
+
+      // --- PAGE 2: QUESTION BREAKDOWNS ---
+      doc.addPage();
+
+      const drawTableHeader = (y: number) => {
+        doc.setFillColor(30, 58, 138); // primary theme blue
+        doc.rect(15, y, 180, 8, 'F');
+
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(255, 255, 255);
+
+        doc.text('ID', 17, y + 5.5);
+        doc.text('Domain', 29, y + 5.5);
+        doc.text('Age Level', 72.5, y + 5.5, { align: 'center' });
+        doc.text('Curriculum Sequence Text', 82, y + 5.5);
+        doc.text('Response', 185, y + 5.5, { align: 'center' });
+      };
+
+      let currentY = 20;
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.setTextColor(30, 58, 138);
+      doc.text('QUESTION RESPONSE BREAKDOWNS', 15, currentY);
+      currentY += 4;
+      
+      drawTableHeader(currentY);
+      currentY += 8;
+
+      questions.forEach((q, idx) => {
+        const ans = responseMap.get(q.questionId) || 'NOT_TESTED';
+        const splitQuestion = doc.splitTextToSize(q.question, 91);
+        const splitDomain = doc.splitTextToSize(q.domain, 34);
+        const textLines = Math.max(splitQuestion.length, splitDomain.length);
+        const rowHeight = textLines * 4.5 + 4; // 4.5mm per line plus padding
+
+        if (currentY + rowHeight > 280) {
+          doc.addPage();
+          currentY = 20;
+          drawTableHeader(currentY);
+          currentY += 8;
+        }
+
+        // Row background
+        const isEven = idx % 2 === 0;
+        doc.setFillColor(isEven ? 248 : 255, isEven ? 250 : 255, isEven ? 252 : 255); // alternating background colors
+        doc.rect(15, currentY, 180, rowHeight, 'F');
+
+        // Draw Cells Content
+        doc.setFont('Helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(30, 41, 59); // slate-800
+        doc.text(q.questionId, 17, currentY + 4.5);
+
+        doc.setFont('Helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(71, 85, 105); // slate-600
+        let domainLineY = currentY + 4.5;
+        splitDomain.forEach((line: string) => {
+          doc.text(line, 29, domainLineY);
+          domainLineY += 4.5;
+        });
+
+        doc.text(`${q.ageLevel} yrs`, 72.5, currentY + 4.5, { align: 'center' });
+
+        doc.setTextColor(15, 23, 42); // slate-900
+        let questionLineY = currentY + 4.5;
+        splitQuestion.forEach((line: string) => {
+          doc.text(line, 82, questionLineY);
+          questionLineY += 4.5;
+        });
+
+        // Response styling (color coded)
+        doc.setFont('Helvetica', 'bold');
+        if (ans === 'YES') {
+          doc.setTextColor(22, 163, 74); // green-600 (PASSED)
+        } else if (ans === 'NO') {
+          doc.setTextColor(220, 38, 38); // red-600 (FAILED)
+        } else {
+          doc.setTextColor(100, 116, 139); // slate-500 (NOT TESTED)
+        }
+        doc.text(ans, 185, currentY + 4.5, { align: 'center' });
+
+        // Cell border line (subtle)
+        doc.setDrawColor(241, 245, 249); // slate-100
+        doc.setLineWidth(0.1);
+        doc.line(15, currentY + rowHeight, 195, currentY + rowHeight);
+
+        currentY += rowHeight;
+      });
+
+      // --- POST-PROCESSING: PAGE NUMBERS & HEADERS ---
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFont('Helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(148, 163, 184); // slate-400
+        
+        doc.text('Carolina Developmental Assessment System (CDAS)', 15, 287);
+        doc.text(`Page ${i} of ${totalPages}`, 195, 287, { align: 'right' });
+        
+        if (i >= 2) {
+          doc.setFont('Helvetica', 'normal');
+          doc.setFontSize(7.5);
+          doc.setTextColor(148, 163, 184);
+          doc.text(`Patient: ${patient.name} (${patient.patientId})`, 15, 12);
+          doc.text(`Assessment Date: ${assessment.assessmentDate}`, 195, 12, { align: 'right' });
+          doc.setDrawColor(241, 245, 249);
+          doc.setLineWidth(0.2);
+          doc.line(15, 14, 195, 14);
         }
       }
 
       // Save PDF
-      pdf.save(`CDAS_Assessment_Report_${patient.patientId}.pdf`);
+      doc.save(`CDAS_Assessment_Report_${patient.patientId}.pdf`);
     } catch (error) {
       console.error('Failed to generate PDF:', error);
       alert('Error generating PDF report. Please try again.');
@@ -166,148 +400,6 @@ export default function PdfReport({ patient, assessment, questions, responses }:
             <ArrowRight className="h-5 w-5" />
           </Link>
         </div>
-      </div>
-
-      {/* Off-screen A4 container for PDF rendering (hidden from UI, laid out by browser for html2canvas) */}
-      <div style={{ position: 'absolute', left: '-9999px', top: '-9999px', width: '210mm' }}>
-        
-        {/* Page 1: Demographics Cover Page */}
-        <div 
-          id="report-page-1" 
-          className="bg-white text-black p-12 font-sans"
-          style={{ width: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
-        >
-          {/* PDF Header Section */}
-          <div className="border-b-2 border-slate-800 pb-4 mb-6 flex justify-between items-end">
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900 uppercase">
-                Carolina Developmental Assessment System (CDAS)
-              </h1>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                Clinical Assessment Report
-              </p>
-            </div>
-            <div className="text-right text-xs text-slate-500 font-semibold uppercase tracking-wider">
-              Clinical Document<br />Confidential
-            </div>
-          </div>
-
-          {/* Info Grid (Demographics + Therapist) */}
-          <div className="grid grid-cols-2 gap-6 text-sm mb-6 border-b border-slate-200 pb-6">
-            {/* Patient Details */}
-            <div className="space-y-1">
-              <h3 className="font-bold text-slate-800 uppercase text-xs tracking-wider border-b border-slate-100 pb-1 mb-2">
-                Patient Information
-              </h3>
-              <div className="grid grid-cols-3 gap-1">
-                <span className="text-slate-500 font-medium">Name:</span>
-                <span className="col-span-2 font-bold text-slate-900">{patient.name}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1">
-                <span className="text-slate-500 font-medium">Patient ID:</span>
-                <span className="col-span-2 font-bold text-slate-900">{patient.patientId}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1">
-                <span className="text-slate-500 font-medium">Gender:</span>
-                <span className="col-span-2 font-semibold text-slate-800">{patient.gender}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1">
-                <span className="text-slate-500 font-medium">DOB:</span>
-                <span className="col-span-2 font-semibold text-slate-800">{patient.dob}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1">
-                <span className="text-slate-500 font-medium">Age:</span>
-                <span className="col-span-2 font-semibold text-slate-800">{patient.age}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1">
-                <span className="text-slate-500 font-medium">Place:</span>
-                <span className="col-span-2 font-semibold text-slate-800">{patient.place || 'N/A'}</span>
-              </div>
-            </div>
-
-            {/* Assessment / Parent Details */}
-            <div className="space-y-1">
-              <h3 className="font-bold text-slate-800 uppercase text-xs tracking-wider border-b border-slate-100 pb-1 mb-2">
-                Assessment Details
-              </h3>
-              <div className="grid grid-cols-3 gap-1">
-                <span className="text-slate-500 font-medium">Therapist:</span>
-                <span className="col-span-2 font-bold text-slate-900">{assessment.therapistName || 'N/A'}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1">
-                <span className="text-slate-500 font-medium">Date:</span>
-                <span className="col-span-2 font-semibold text-slate-800">{assessment.assessmentDate}</span>
-              </div>
-              
-              <div className="mt-6 pt-4 border-t border-slate-100">
-                <span className="text-xs text-slate-500 font-bold uppercase tracking-wider block mb-1">Parent / Guardian</span>
-                <div className="grid grid-cols-3 gap-1">
-                  <span className="text-slate-500 font-medium">Name:</span>
-                  <span className="col-span-2 font-semibold text-slate-800">{patient.parentName || 'N/A'}</span>
-                </div>
-                <div className="grid grid-cols-3 gap-1">
-                  <span className="text-slate-500 font-medium">Phone:</span>
-                  <span className="col-span-2 font-semibold text-slate-800">{patient.phone || 'N/A'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Clinician Notes Section */}
-          {assessment.notes && (
-            <div className="border border-slate-200 p-4 rounded">
-              <h4 className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-1">Therapist Notes</h4>
-              <p className="text-sm text-slate-800 italic whitespace-pre-line">{assessment.notes}</p>
-            </div>
-          )}
-        </div>
-
-        {/* Page 2 onwards: Question Report Section (divided into chunks of 15 to prevent row cutting) */}
-        {questionChunks.map((chunk, chunkIdx) => (
-          <div 
-            key={chunkIdx}
-            id={`report-page-table-${chunkIdx}`} 
-            className="bg-white text-black p-12 font-sans"
-            style={{ width: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
-          >
-            <h3 className="font-bold text-slate-800 uppercase text-xs tracking-wider mb-3">
-              Question Response Breakdowns (Page {chunkIdx + 1} of {questionChunks.length})
-            </h3>
-            
-            <table className="w-full text-left border-collapse text-xs border border-slate-200">
-              <thead>
-                <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
-                  <th className="py-1.5 px-2 border-r border-slate-200 w-16">ID</th>
-                  <th className="py-1.5 px-2 border-r border-slate-200 w-32">Domain</th>
-                  <th className="py-1.5 px-2 border-r border-slate-200 w-16">Age Level</th>
-                  <th className="py-1.5 px-2 border-r border-slate-200">Curriculum Sequence Text</th>
-                  <th className="py-1.5 px-2 w-20 text-center">Response</th>
-                </tr>
-              </thead>
-              <tbody>
-                {chunk.map((q) => {
-                  const ans = responseMap.get(q.questionId) || 'NOT_TESTED';
-                  return (
-                    <tr key={q.questionId} className="border-b border-slate-200">
-                      <td className="py-1.5 px-2 font-bold text-slate-900 border-r border-slate-200">{q.questionId}</td>
-                      <td className="py-1.5 px-2 text-slate-600 border-r border-slate-200 font-medium">{q.domain}</td>
-                      <td className="py-1.5 px-2 text-slate-600 border-r border-slate-200 text-center font-medium">{q.ageLevel} yrs</td>
-                      <td className="py-1.5 px-2 text-slate-800 border-r border-slate-200">{q.question}</td>
-                      <td className="py-1.5 px-2 font-bold text-center text-slate-800">
-                        {ans}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            {/* Footer info */}
-            <div className="mt-8 pt-6 border-t border-slate-200 text-xs text-slate-400">
-              <p>Carolina Developmental Assessment System (CDAS) • Page {chunkIdx + 2}</p>
-            </div>
-          </div>
-        ))}
       </div>
     </div>
   );

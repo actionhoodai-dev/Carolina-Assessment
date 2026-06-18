@@ -24,10 +24,34 @@ export default function ClinicalReportPage({ params }: ReportPageProps) {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
+    // Try loading from local cache first for instant load
+    const cachedAssessments = dbClient.getCachedAssessments();
+    const cachedPatients = dbClient.getCachedPatients();
+    const cachedQuestions = dbClient.getCachedQuestions();
+    const cachedResponses = dbClient.getCachedResponses(assessmentId);
+
+    const cachedAssessment = cachedAssessments.find(a => a.assessmentId === assessmentId);
+    const cachedPatient = cachedAssessment ? cachedPatients.find(p => p.patientId === cachedAssessment.patientId) : null;
+
+    if (cachedAssessment && cachedPatient && cachedQuestions.length > 0) {
+      setAssessment(cachedAssessment);
+      setPatient(cachedPatient);
+      setQuestions(cachedQuestions);
+      setResponses(cachedResponses);
+      setLoading(false);
+    }
+
     async function loadReportData() {
       try {
-        // Load assessment details
-        const loadedAssessment = await dbClient.getAssessmentById(assessmentId);
+        // Fetch fresh report data in parallel
+        const [loadedAssessments, loadedPatients, loadedQuestions, loadedResponses] = await Promise.all([
+          dbClient.getAssessments(),
+          dbClient.getPatients(),
+          dbClient.getQuestions(),
+          dbClient.getResponses(assessmentId)
+        ]);
+
+        const loadedAssessment = loadedAssessments.find(a => a.assessmentId === assessmentId);
         if (!loadedAssessment) {
           setErrorMsg('Assessment session log not found.');
           setLoading(false);
@@ -35,11 +59,7 @@ export default function ClinicalReportPage({ params }: ReportPageProps) {
         }
         setAssessment(loadedAssessment);
 
-        // Load patient demographics
-        const loadedPatient = await dbClient.getPatients().then(patients => 
-          patients.find(p => p.patientId === loadedAssessment.patientId)
-        );
-
+        const loadedPatient = loadedPatients.find(p => p.patientId === loadedAssessment.patientId);
         if (!loadedPatient) {
           setErrorMsg('Patient profile associated with this report not found.');
           setLoading(false);
@@ -47,14 +67,8 @@ export default function ClinicalReportPage({ params }: ReportPageProps) {
         }
         setPatient(loadedPatient);
 
-        // Load static questions
-        const loadedQuestions = await dbClient.getQuestions();
         setQuestions(loadedQuestions);
-
-        // Load responses
-        const loadedResponses = await dbClient.getResponses(assessmentId);
         setResponses(loadedResponses);
-
       } catch (e) {
         console.error('Error loading clinical report page', e);
         setErrorMsg('An error occurred while compilation.');

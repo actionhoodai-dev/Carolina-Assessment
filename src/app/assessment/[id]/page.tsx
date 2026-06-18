@@ -20,9 +20,27 @@ export default function ActiveAssessmentPage({ params }: AssessmentPageProps) {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
+    // Try loading from local cache first for instant load
+    const cachedAssessments = dbClient.getCachedAssessments();
+    const cachedPatients = dbClient.getCachedPatients();
+    const cachedAssessment = cachedAssessments.find(a => a.assessmentId === assessmentId);
+    const cachedPatient = cachedAssessment ? cachedPatients.find(p => p.patientId === cachedAssessment.patientId) : null;
+
+    if (cachedAssessment && cachedPatient) {
+      setAssessment(cachedAssessment);
+      setPatient(cachedPatient);
+      setLoading(false);
+    }
+
     async function loadAssessmentData() {
       try {
-        const loadedAssessment = await dbClient.getAssessmentById(assessmentId);
+        // Fetch fresh assessments and patients in parallel
+        const [loadedAssessments, loadedPatients] = await Promise.all([
+          dbClient.getAssessments(),
+          dbClient.getPatients()
+        ]);
+
+        const loadedAssessment = loadedAssessments.find(a => a.assessmentId === assessmentId);
         if (!loadedAssessment) {
           setErrorMsg('Assessment session not found.');
           setLoading(false);
@@ -30,10 +48,7 @@ export default function ActiveAssessmentPage({ params }: AssessmentPageProps) {
         }
         setAssessment(loadedAssessment);
 
-        const loadedPatient = await dbClient.getPatients().then(patients => 
-          patients.find(p => p.patientId === loadedAssessment.patientId)
-        );
-
+        const loadedPatient = loadedPatients.find(p => p.patientId === loadedAssessment.patientId);
         if (!loadedPatient) {
           setErrorMsg('Patient demographics associated with this assessment not found.');
           setLoading(false);

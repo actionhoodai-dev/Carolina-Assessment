@@ -24,10 +24,21 @@ function SearchContent() {
   const [startError, setStartError] = useState('');
 
   useEffect(() => {
+    // Load cached data first for instant layout
+    const cachedPatients = dbClient.getCachedPatients();
+    const cachedAssessments = dbClient.getCachedAssessments();
+    if (cachedPatients.length > 0 || cachedAssessments.length > 0) {
+      setPatients(cachedPatients);
+      setAssessments(cachedAssessments);
+      setLoading(false);
+    }
+
     async function loadData() {
       try {
-        const loadedPatients = await dbClient.getPatients();
-        const loadedAssessments = await dbClient.getAssessments();
+        const [loadedPatients, loadedAssessments] = await Promise.all([
+          dbClient.getPatients(),
+          dbClient.getAssessments()
+        ]);
         setPatients(loadedPatients);
         setAssessments(loadedAssessments);
       } catch (e) {

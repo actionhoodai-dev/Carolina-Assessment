@@ -12,20 +12,50 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Load cached data first for instant layout
+    const cachedPatients = dbClient.getCachedPatients();
+    const cachedAssessments = dbClient.getCachedAssessments();
+    if (cachedPatients.length > 0 || cachedAssessments.length > 0) {
+      setPatients(cachedPatients.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      setAssessments(cachedAssessments.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      setLoading(false);
+    }
+
     async function loadDashboardData() {
       try {
-        // Run sync first in case of queued offline updates
-        await dbClient.runSync();
+        // Fetch fresh data from the server in parallel immediately
+        const [loadedPatients, loadedAssessments] = await Promise.all([
+          dbClient.getPatients(),
+          dbClient.getAssessments()
+        ]);
         
-        const loadedPatients = await dbClient.getPatients();
-        const loadedAssessments = await dbClient.getAssessments();
-        
-        // Sort lists to show most recent first
         setPatients(loadedPatients.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
         setAssessments(loadedAssessments.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        setLoading(false);
+
+        // Run sync in the background without blocking the UI
+        const syncQueueKey = 'cdas_sync_queue';
+        const hasQueuedItems = typeof window !== 'undefined' && 
+          JSON.parse(localStorage.getItem(syncQueueKey) || '[]').length > 0;
+
+        if (hasQueuedItems) {
+          dbClient.runSync().then(async () => {
+            const currentQueue = JSON.parse(localStorage.getItem(syncQueueKey) || '[]');
+            if (currentQueue.length === 0) {
+              console.log('Background sync complete, refetching dashboard data...');
+              const [syncedPatients, syncedAssessments] = await Promise.all([
+                dbClient.getPatients(),
+                dbClient.getAssessments()
+              ]);
+              setPatients(syncedPatients.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+              setAssessments(syncedAssessments.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+            }
+          }).catch(err => {
+            console.error('Background sync failed:', err);
+          });
+        }
       } catch (error) {
         console.error('Error loading dashboard data', error);
-      } finally {
         setLoading(false);
       }
     }
