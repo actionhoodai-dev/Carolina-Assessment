@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbServer } from '@/lib/db-server';
+import { syncResponsesToGoogleSheets } from '@/lib/google-sheets';
 
 export async function GET(req: NextRequest) {
   try {
@@ -29,6 +30,12 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'assessmentId is required' }, { status: 400 });
       }
       const saved = dbServer.saveResponses(assessmentId, responses);
+      
+      // Sync list responses to Google Sheets in background
+      syncResponsesToGoogleSheets(assessmentId, saved).catch(err => {
+        console.error('Error syncing responses list to Google Sheets:', err);
+      });
+
       return NextResponse.json(saved);
     } else {
       const { assessmentId, questionId, answer } = body;
@@ -37,6 +44,12 @@ export async function POST(req: NextRequest) {
       }
       
       const saved = dbServer.saveSingleResponse(assessmentId, questionId, answer);
+      
+      // Sync single response to Google Sheets in background
+      syncResponsesToGoogleSheets(assessmentId, [saved]).catch(err => {
+        console.error('Error syncing single response to Google Sheets:', err);
+      });
+
       return NextResponse.json(saved);
     }
   } catch (error) {

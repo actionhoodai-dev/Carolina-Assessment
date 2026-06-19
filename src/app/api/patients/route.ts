@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbServer } from '@/lib/db-server';
+import { syncPatientToGoogleSheets } from '@/lib/google-sheets';
 
 export async function GET() {
   try {
@@ -29,6 +30,11 @@ export async function POST(req: NextRequest) {
       parentName: parentName || '',
       phone: phone || '',
       place: place || ''
+    });
+
+    // Sync to Google Sheets in background
+    syncPatientToGoogleSheets(saved).catch(err => {
+      console.error('Error syncing patient to Google Sheets:', err);
     });
 
     return NextResponse.json(saved);
