@@ -43,27 +43,47 @@ interface DbSchema {
   responses: Response[];
 }
 
+let memoryDb: DbSchema = {
+  patients: [],
+  assessments: [],
+  responses: []
+};
+
+let dbLoaded = false;
+
 function initializeDb(): DbSchema {
+  if (dbLoaded) {
+    return memoryDb;
+  }
+
   if (!fs.existsSync(DB_FILE)) {
-    const defaultDb: DbSchema = {
-      patients: [],
-      assessments: [],
-      responses: []
-    };
-    fs.writeFileSync(DB_FILE, JSON.stringify(defaultDb, null, 2), 'utf8');
-    return defaultDb;
+    try {
+      fs.writeFileSync(DB_FILE, JSON.stringify(memoryDb, null, 2), 'utf8');
+    } catch (e) {
+      console.warn('Vercel or Read-only filesystem detected. Running database in-memory.');
+    }
+    dbLoaded = true;
+    return memoryDb;
   }
   try {
     const content = fs.readFileSync(DB_FILE, 'utf8');
-    return JSON.parse(content);
+    memoryDb = JSON.parse(content);
+    dbLoaded = true;
+    return memoryDb;
   } catch (error) {
     console.error('Error reading DB file, returning empty schema', error);
-    return { patients: [], assessments: [], responses: [] };
+    dbLoaded = true;
+    return memoryDb;
   }
 }
 
 function saveDb(data: DbSchema) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
+  memoryDb = data;
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
+  } catch (error) {
+    // Gracefully catch read-only filesystem errors on Vercel
+  }
 }
 
 export const dbServer = {
