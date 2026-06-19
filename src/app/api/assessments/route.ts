@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbServer } from '@/lib/db-server';
-import { syncAssessmentToGoogleSheets, pullFromGoogleSheets } from '@/lib/google-sheets';
+import { syncAssessmentToGoogleSheets } from '@/lib/google-sheets';
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const patientId = searchParams.get('patientId');
-    
-    await pullFromGoogleSheets();
     
     let assessments;
     if (patientId) {

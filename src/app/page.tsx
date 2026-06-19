@@ -23,6 +23,13 @@ export default function Dashboard() {
 
     async function loadDashboardData() {
       try {
+        // Trigger a database sync from Google Sheets first in background
+        try {
+          await fetch('/api/sync', { method: 'POST' });
+        } catch (syncError) {
+          console.error('Failed to trigger background Google Sheets sync:', syncError);
+        }
+
         // Fetch fresh data from the server in parallel immediately
         const [loadedPatients, loadedAssessments] = await Promise.all([
           dbClient.getPatients(),
