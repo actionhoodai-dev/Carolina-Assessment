@@ -53,6 +53,11 @@ export default function ClinicalReportPage({ params }: ReportPageProps) {
 
         const loadedAssessment = loadedAssessments.find(a => a.assessmentId === assessmentId);
         if (!loadedAssessment) {
+          // If we already loaded a valid version from local storage cache, do not show error
+          if (cachedAssessment && cachedPatient && cachedQuestions.length > 0) {
+            console.warn('Assessment not found on server during fetch, using cached local version.');
+            return;
+          }
           setErrorMsg('Assessment session log not found.');
           setLoading(false);
           return;
@@ -61,6 +66,10 @@ export default function ClinicalReportPage({ params }: ReportPageProps) {
 
         const loadedPatient = loadedPatients.find(p => p.patientId === loadedAssessment.patientId);
         if (!loadedPatient) {
+          if (cachedAssessment && cachedPatient && cachedQuestions.length > 0) {
+            console.warn('Patient not found on server during fetch, using cached local version.');
+            return;
+          }
           setErrorMsg('Patient profile associated with this report not found.');
           setLoading(false);
           return;
@@ -71,7 +80,9 @@ export default function ClinicalReportPage({ params }: ReportPageProps) {
         setResponses(loadedResponses);
       } catch (e) {
         console.error('Error loading clinical report page', e);
-        setErrorMsg('An error occurred while compilation.');
+        if (!cachedAssessment || !cachedPatient || cachedQuestions.length === 0) {
+          setErrorMsg('An error occurred while compilation.');
+        }
       } finally {
         setLoading(false);
       }

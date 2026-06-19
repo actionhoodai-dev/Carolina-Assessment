@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { dbServer } from '@/lib/db-server';
 import { syncAssessmentToGoogleSheets } from '@/lib/google-sheets';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);

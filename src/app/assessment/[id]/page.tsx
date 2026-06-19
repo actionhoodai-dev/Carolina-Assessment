@@ -42,6 +42,11 @@ export default function ActiveAssessmentPage({ params }: AssessmentPageProps) {
 
         const loadedAssessment = loadedAssessments.find(a => a.assessmentId === assessmentId);
         if (!loadedAssessment) {
+          // If we already loaded a valid version from local storage cache, do not show error
+          if (cachedAssessment && cachedPatient) {
+            console.warn('Assessment not found on server during fetch, using cached local version.');
+            return;
+          }
           setErrorMsg('Assessment session not found.');
           setLoading(false);
           return;
@@ -50,6 +55,10 @@ export default function ActiveAssessmentPage({ params }: AssessmentPageProps) {
 
         const loadedPatient = loadedPatients.find(p => p.patientId === loadedAssessment.patientId);
         if (!loadedPatient) {
+          if (cachedAssessment && cachedPatient) {
+            console.warn('Patient not found on server during fetch, using cached local version.');
+            return;
+          }
           setErrorMsg('Patient demographics associated with this assessment not found.');
           setLoading(false);
           return;
@@ -57,7 +66,9 @@ export default function ActiveAssessmentPage({ params }: AssessmentPageProps) {
         setPatient(loadedPatient);
       } catch (e) {
         console.error('Error loading assessment page', e);
-        setErrorMsg('An error occurred while loading this session.');
+        if (!cachedAssessment || !cachedPatient) {
+          setErrorMsg('An error occurred while loading this session.');
+        }
       } finally {
         setLoading(false);
       }

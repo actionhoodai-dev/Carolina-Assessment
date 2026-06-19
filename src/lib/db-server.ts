@@ -88,7 +88,37 @@ function saveDb(data: DbSchema) {
 
 export const dbServer = {
   replaceDb(patients: Patient[], assessments: Assessment[], responses: Response[]) {
-    saveDb({ patients, assessments, responses });
+    const data = initializeDb();
+    
+    // Merge patients: keep sheets ones, plus local ones not in sheets
+    const mergedPatients = [...patients];
+    for (const cp of data.patients) {
+      if (!mergedPatients.some(p => p.patientId === cp.patientId)) {
+        mergedPatients.push(cp);
+      }
+    }
+
+    // Merge assessments: keep sheets ones, plus local ones not in sheets
+    const mergedAssessments = [...assessments];
+    for (const ca of data.assessments) {
+      if (!mergedAssessments.some(a => a.assessmentId === ca.assessmentId)) {
+        mergedAssessments.push(ca);
+      }
+    }
+
+    // Merge responses: keep sheets ones, plus local ones where assessmentId & questionId are not in sheets responses
+    const mergedResponses = [...responses];
+    for (const cr of data.responses) {
+      if (!mergedResponses.some(r => r.assessmentId === cr.assessmentId && r.questionId === cr.questionId)) {
+        mergedResponses.push(cr);
+      }
+    }
+
+    saveDb({
+      patients: mergedPatients,
+      assessments: mergedAssessments,
+      responses: mergedResponses
+    });
   },
 
   getQuestions(): Question[] {

@@ -11,7 +11,16 @@ const STORAGE_KEYS = {
 // Simple fetch wrapper to handle errors gracefully
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T | null> {
   try {
-    const res = await fetch(url, options);
+    const defaultOptions: RequestInit = {
+      ...options,
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        ...(options?.headers || {})
+      }
+    };
+    const res = await fetch(url, defaultOptions);
     if (res.ok) {
       return await res.json();
     }

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { dbServer } from '@/lib/db-server';
 import { syncPatientToGoogleSheets } from '@/lib/google-sheets';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const patients = dbServer.getPatients();
