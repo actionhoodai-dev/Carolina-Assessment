@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbServer } from '@/lib/db-server';
-import { syncResponsesToGoogleSheets } from '@/lib/google-sheets';
+import { syncResponsesToGoogleSheets, pullFromGoogleSheets } from '@/lib/google-sheets';
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'assessmentId is required' }, { status: 400 });
     }
 
+    await pullFromGoogleSheets();
     const responses = dbServer.getResponses(assessmentId);
     return NextResponse.json(responses);
   } catch (error) {

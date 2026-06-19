@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dbServer } from '@/lib/db-server';
-import { syncPatientToGoogleSheets } from '@/lib/google-sheets';
+import { syncPatientToGoogleSheets, pullFromGoogleSheets } from '@/lib/google-sheets';
 
 export async function GET() {
   try {
+    await pullFromGoogleSheets();
     const patients = dbServer.getPatients();
     return NextResponse.json(patients);
   } catch (error) {

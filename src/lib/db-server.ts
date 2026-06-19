@@ -67,6 +67,10 @@ function saveDb(data: DbSchema) {
 }
 
 export const dbServer = {
+  replaceDb(patients: Patient[], assessments: Assessment[], responses: Response[]) {
+    saveDb({ patients, assessments, responses });
+  },
+
   getQuestions(): Question[] {
     return SEED_QUESTIONS;
   },
